@@ -1,0 +1,155 @@
+receivers:
+  loki:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:3500
+    use_incoming_timestamp: true
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+        cors:
+          allowed_origins:
+          - http://localhost:8080
+          - http://127.0.0.1:8080
+          - http://host.docker.internal:8080
+          - http://0.0.0.0:8080
+          - https://drunkenvibecoding.com
+          - https://www.drunkenvibecoding.com
+          - https://awlrightleathers.com
+          - https://www.awlrightleathers.com
+          allowed_headers:
+          - Content-Type
+          - X-Requested-With
+          - traceparent
+          - tracestate
+          - baggage
+          max_age: 7200
+      grpc:
+        endpoint: 0.0.0.0:4317
+processors:
+  batch: {}
+  batch/logs:
+    send_batch_size: 200
+    send_batch_max_size: 200
+    timeout: 2s
+  transform/dockerlogs:
+    error_mode: ignore
+    log_statements:
+    - context: log
+      statements:
+      - set(attributes["service.name"], attributes["container"]) where attributes["container"]
+        != nil and attributes["service.name"] == nil
+      - set(attributes["service.name"], attributes["app"]) where attributes["app"]
+        != nil and attributes["service.name"] == nil
+      - set(attributes["trace_id"], trace_id.string) where trace_id.string != "00000000000000000000000000000000"
+      - set(attributes["span_id"], span_id.string) where span_id.string != "0000000000000000"
+      - set(attributes["trace_id"], ParseJSON(body)["trace_id"]) where attributes["trace_id"]
+        == nil and IsString(body) and IsMatch(body, "\"trace_id\"\\s*:\\s*\"[0-9a-fA-F]{32}\"")
+      - set(attributes["span_id"], ParseJSON(body)["span_id"]) where attributes["span_id"]
+        == nil and IsString(body) and IsMatch(body, "\"span_id\"\\s*:\\s*\"[0-9a-fA-F]{16}\"")
+connectors:
+  spanmetrics:
+    namespace: traces.span.metrics
+    histogram:
+      explicit:
+        buckets:
+        - 5ms
+        - 10ms
+        - 25ms
+        - 50ms
+        - 100ms
+        - 250ms
+        - 500ms
+        - 1s
+        - 1.5s
+        - 2s
+        - 2.5s
+        - 4s
+        - 5s
+        - 10s
+        - 30s
+        - 60s
+        - 2m
+        - 5m
+    dimensions:
+    - name: rum.route
+    - name: rum.country
+    - name: rum.region
+    - name: rum.referrer
+    - name: rum.section
+    - name: rum.cta
+    - name: rum.episode
+    - name: rum.vital.name
+    - name: rum.vital.rating
+    - name: rum.error.message
+    - name: session.id
+    dimensions_cache_size: 5000
+    aggregation_temporality: AGGREGATION_TEMPORALITY_CUMULATIVE
+    metrics_flush_interval: 15s
+    exemplars:
+      enabled: false
+exporters:
+  otlphttp/tempo:
+    endpoint: http://tempo:4318
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: 0.0.0.0:9464
+    resource_to_telemetry_conversion:
+      enabled: true
+  debug:
+    verbosity: basic
+  logicmonitor:
+    endpoint: https://lmrobert.logicmonitor.com/rest
+    api_token:
+      access_id: ${env:LOGICMONITOR_ACCESS_ID}
+      access_key: ${env:LOGICMONITOR_ACCESS_KEY}
+    logs:
+      resource_mapping_op: or
+  otlp/logicmonitor:
+    endpoint: host.docker.internal:14317
+    tls:
+      insecure: true
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  pprof: {}
+  zpages: {}
+service:
+  telemetry:
+    logs:
+      level: warn
+  extensions:
+  - health_check
+  - pprof
+  - zpages
+  pipelines:
+    traces:
+      receivers:
+      - otlp
+      processors:
+      - batch
+      exporters:
+      - otlphttp/tempo
+      - spanmetrics
+      - otlp/logicmonitor
+    metrics:
+      receivers:
+      - otlp
+      - spanmetrics
+      processors:
+      - batch
+      exporters:
+      - prometheus
+    logs:
+      receivers:
+      - otlp
+      processors:
+      - transform/dockerlogs
+      - batch
+      exporters:
+      - otlphttp/loki
+      - logicmonitor

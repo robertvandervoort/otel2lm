@@ -1,0 +1,33 @@
+# otel2lm mapping: which LogicMonitor resource each OpenTelemetry service lands on.
+# This is the mapping used for nas (Docker host with five public sites).
+portal: lmrobert                 # https://<portal>.logicmonitor.com
+collector_id: 3                  # LM collector that can reach these hosts (0 = let LM choose)
+group: nas containers            # resource group the resources go in (dashboards filter on it)
+lm_otel_endpoint: host.docker.internal:14317   # LM OTel collector (lmotel) OTLP gRPC
+fallback_resource: nas           # anything unmatched lands on the host
+resources:
+  - name: chip-web               # LM resource name = container name
+    services: ["^chip-web(-browser|-rum)?$"]     # service.name regexes, browser RUM included
+    containers: [chip-web]       # docker container label on promtail/filelog logs
+    properties: {service.namespace: vdv, compose.project: chip-marketing-page, docker.host: nas}
+  - name: awlright-web
+    services: ["^(awlright-leathers|awlright-web-rum)$"]
+    properties: {service.namespace: vdv, compose.project: awlright, docker.host: nas}
+  - name: awlright-admin
+    services: ["^awlright-admin$"]
+    properties: {service.namespace: vdv, compose.project: awlright, docker.host: nas}
+  - name: vdvlabs-web-1
+    services: ["^vdvlabs-web(-browser|-rum)?$"]
+    properties: {service.namespace: vdvlabs, compose.project: vdvlabs, docker.host: nas}
+  - name: vectorstudio-vectorstudio-api-1
+    services: ["^vectorstudio-api$"]
+    properties: {service.namespace: vectorstudio, compose.project: vectorstudio, docker.host: nas}
+  - name: vectorstudio-vectorstudio-janitor-1
+    services: ["^vectorstudio-janitor$"]
+    properties: {service.namespace: vectorstudio, compose.project: vectorstudio, docker.host: nas}
+  - name: vectorstudio-vectorstudio-app-1
+    services: ["^vectorstudio-web$"]
+    properties: {service.namespace: vectorstudio, compose.project: vectorstudio, docker.host: nas}
+  - name: dvc-web
+    services: ["^dvc-web-rum$"]
+    properties: {service.namespace: dvc, compose.project: dvc, docker.host: nas}
